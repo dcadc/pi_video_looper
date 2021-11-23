@@ -54,6 +54,8 @@ class OMXPlayer:
                 self._subtitle_header = '00:00:00,00 --> {:d}:{:02d}:{:02d},00\n'.format(h, m, s)
             else:
                 self._subtitle_header = '00:00:00,00 --> 99:59:59,00\n'
+        self._trigger_timestamp = config.get('trigger', 'timestamp').split()
+        self._trigger_timestamp_len = len(self._trigger_timestamp)//2
 
     def supported_extensions(self):
         """Return list of supported file extensions."""
@@ -93,32 +95,30 @@ class OMXPlayer:
         """Return true if the video player is running, false otherwise."""
         if self._process is None:
             return False
-        
-        with open('/tmp/omxplayerdbus.root', 'r+') as fd:
-            sock_info = fd.read().strip()
+        self._in_trigger_range = None
+        try:
+            with open('/tmp/omxplayerdbus.root', 'r+') as fd:
+                sock_info = fd.read().strip()
 
-        bus = dbus.bus.BusConnection(sock_info)
-        obj = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
-                '/org/mpris/MediaPlayer2', introspect=False)
-        ifp = dbus.Interface(obj, 'org.freedesktop.DBus.Properties')
-        
-        if ifp.Position() > 10000000 and ifp.Position() < 20000000:
+            bus = dbus.bus.BusConnection(sock_info)
+            obj = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
+                    '/org/mpris/MediaPlayer2', introspect=False)
+            ifp = dbus.Interface(obj, 'org.freedesktop.DBus.Properties')
+            
+            for i in range(self._trigger_timestamp_len):
+                _trigger_start = int(self._trigger_timestamp[i*2])
+                _trigger_duration = int(self._trigger_timestamp[i*2+1])
+                _trigger_stop = _trigger_start + _trigger_duration
+                if ifp.Position() > _trigger_start and ifp.Position() < _trigger_stop and self._in_trigger_range != True:
+                    self._in_trigger_range = True
+                    break
+                else:
+                    self._in_trigger_range = False
+        except:
+            print('DBUS Not Created')
+        if self._in_trigger_range == True:
             if self._relay_state != True:
-                print ('Relay ON',ifp.Position())
-                self._relay_state = True
-                GPIO.setup(self._relay_on_pin,GPIO.OUT)
-                time.sleep(self._relay_pulse_width_s)
-                GPIO.setup(self._relay_on_pin,GPIO.IN)
-        elif ifp.Position() > 30000000 and ifp.Position() < 40000000:
-            if self._relay_state != True:
-                print ('Relay ON',ifp.Position())
-                self._relay_state = True
-                GPIO.setup(self._relay_on_pin,GPIO.OUT)
-                time.sleep(self._relay_pulse_width_s)
-                GPIO.setup(self._relay_on_pin,GPIO.IN)
-        elif ifp.Position() > 50000000 and ifp.Position() < 60000000:
-            if self._relay_state != True:
-                print ('Relay  ON',ifp.Position())
+                print ('Relay ON ',ifp.Position())
                 self._relay_state = True
                 GPIO.setup(self._relay_on_pin,GPIO.OUT)
                 time.sleep(self._relay_pulse_width_s)
@@ -130,7 +130,6 @@ class OMXPlayer:
                 GPIO.setup(self._relay_off_pin,GPIO.OUT)
                 time.sleep(self._relay_pulse_width_s)
                 GPIO.setup(self._relay_off_pin,GPIO.IN)
-
         self._process.poll()
         return self._process.returncode is None
 
