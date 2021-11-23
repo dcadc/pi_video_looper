@@ -21,9 +21,6 @@ class OMXPlayer:
         self._temp_directory = None
         self._load_config(config)
         self._relay_state = None
-        self._relay_on_pin = 5
-        self._relay_off_pin = 3
-        self._relay_pulse_width_s = 0.05
         GPIO.setmode(GPIO.BOARD)
 
     def __del__(self):
@@ -56,6 +53,9 @@ class OMXPlayer:
                 self._subtitle_header = '00:00:00,00 --> 99:59:59,00\n'
         self._trigger_timestamp = config.get('trigger', 'timestamp').split()
         self._trigger_timestamp_len = len(self._trigger_timestamp)//2
+        self._relay_on_pin = config.getint('trigger', 'gpio_on_pin')
+        self._relay_off_pin = config.getint('trigger', 'gpio_off_pin')
+        self._relay_pulse_width_s = config.getfloat('trigger', 'output_pulse_width_s')
 
     def supported_extensions(self):
         """Return list of supported file extensions."""
