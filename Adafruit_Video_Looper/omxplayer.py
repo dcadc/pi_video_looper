@@ -6,6 +6,8 @@ import shutil
 import subprocess
 import tempfile
 import time
+import dbus
+import RPi.GPIO as GPIO
 
 from .alsa_config import parse_hw_device
 
@@ -18,6 +20,11 @@ class OMXPlayer:
         self._process = None
         self._temp_directory = None
         self._load_config(config)
+        self._relay_state = None
+        self._relay_on_pin = 5
+        self._relay_off_pin = 3
+        self._relay_pulse_width_s = 0.05
+        GPIO.setmode(GPIO.BOARD)
 
     def __del__(self):
         if self._temp_directory:
@@ -76,11 +83,54 @@ class OMXPlayer:
         self._process = subprocess.Popen(args,
                                          stdout=open(os.devnull, 'wb'),
                                          close_fds=True)
+        self._relay_state = False
+        print ('Play Relay FORCE_OFF')
+        GPIO.setup(self._relay_off_pin,GPIO.OUT)
+        time.sleep(self._relay_pulse_width_s)
+        GPIO.setup(self._relay_off_pin,GPIO.IN)
 
     def is_playing(self):
         """Return true if the video player is running, false otherwise."""
         if self._process is None:
             return False
+        
+        with open('/tmp/omxplayerdbus.root', 'r+') as fd:
+            sock_info = fd.read().strip()
+
+        bus = dbus.bus.BusConnection(sock_info)
+        obj = bus.get_object('org.mpris.MediaPlayer2.omxplayer',
+                '/org/mpris/MediaPlayer2', introspect=False)
+        ifp = dbus.Interface(obj, 'org.freedesktop.DBus.Properties')
+        
+        if ifp.Position() > 10000000 and ifp.Position() < 20000000:
+            if self._relay_state != True:
+                print ('Relay ON',ifp.Position())
+                self._relay_state = True
+                GPIO.setup(self._relay_on_pin,GPIO.OUT)
+                time.sleep(self._relay_pulse_width_s)
+                GPIO.setup(self._relay_on_pin,GPIO.IN)
+        elif ifp.Position() > 30000000 and ifp.Position() < 40000000:
+            if self._relay_state != True:
+                print ('Relay ON',ifp.Position())
+                self._relay_state = True
+                GPIO.setup(self._relay_on_pin,GPIO.OUT)
+                time.sleep(self._relay_pulse_width_s)
+                GPIO.setup(self._relay_on_pin,GPIO.IN)
+        elif ifp.Position() > 50000000 and ifp.Position() < 60000000:
+            if self._relay_state != True:
+                print ('Relay  ON',ifp.Position())
+                self._relay_state = True
+                GPIO.setup(self._relay_on_pin,GPIO.OUT)
+                time.sleep(self._relay_pulse_width_s)
+                GPIO.setup(self._relay_on_pin,GPIO.IN)
+        else:
+            if self._relay_state != False:
+                print ('Relay OFF',ifp.Position())
+                self._relay_state = False
+                GPIO.setup(self._relay_off_pin,GPIO.OUT)
+                time.sleep(self._relay_pulse_width_s)
+                GPIO.setup(self._relay_off_pin,GPIO.IN)
+
         self._process.poll()
         return self._process.returncode is None
 
@@ -102,6 +152,12 @@ class OMXPlayer:
             time.sleep(0)
         # Let the process be garbage collected.
         self._process = None
+        
+        self._relay_state = False
+        print ('Stop Relay FORCE_OFF')
+        GPIO.setup(self._relay_off_pin,GPIO.OUT)
+        time.sleep(self._relay_pulse_width_s)
+        GPIO.setup(self._relay_off_pin,GPIO.IN)
 
     @staticmethod
     def can_loop_count():
